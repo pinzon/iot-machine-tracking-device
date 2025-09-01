@@ -1,0 +1,154 @@
+Description: >-
+  A complete, native AWS CloudFormation template to track machine status.
+  It includes:
+  - An S3 bucket for storing CSV logs.
+  - A Lambda function that processes incoming IoT data and writes it as a CSV file.
+  - IAM roles and policies for secure execution and invocation.
+
+Parameters:
+  LambdaBucket:
+    Type: String
+    Description: Bucket where the lambda code is stored
+    Default: 'cris-lambdas'
+  
+  LambdaKey:
+    Type: String
+    Description: Bucket where the lambda code is stored
+    Default: 'receiver.zip'
+
+  S3BucketName:
+    Type: String
+    Description: Name of the S3 bucket to store CSV files.
+    Default: 'machine-tracker-iot-data-logs'
+
+  S3Prefix:
+    Type: String
+    Description: Prefix for CSV files stored in the S3 bucket.
+    Default: 'machine_durations/'
+
+Resources:
+
+  # Define an S3 bucket
+  DataStorageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+
+  # Define an IAM Role for Lambda function execution
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: '/'
+
+  # Attach permission for the Lambda to write to S3 and execute
+  LambdaExecutionPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: LambdaS3Access
+      Roles:
+        - !Ref LambdaExecutionRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: "*"
+
+  # Define the Lambda function that processes IoT data and writes to S3
+  IotDataProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: !Ref LambdaKey  # Ensure this file is uploaded to your S3 bucket
+      Handler: receiver.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.10
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref S3BucketName
+          S3_KEY_PREFIX: !Ref S3Prefix
+
+  LambdaPermissionForIoT:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref IotDataProcessorFunction
+      Action: lambda:InvokeFunction
+      Principal: iot.amazonaws.com
+
+  # Define an IAM role for the IoT Rule to invoke the Lambda function
+  IotRuleRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: iot.amazonaws.com
+            Action: sts:AssumeRole
+      Path: '/'
+
+  # Attach permission for the IoT Rule to invoke the Lambda function
+  IotRuleLambdaPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: IotRuleInvokeLambdaPolicy
+      Roles:
+        - !Ref IotRuleRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - lambda:InvokeFunction
+            Resource: !GetAtt IotDataProcessorFunction.Arn
+          
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: "*"
+
+  # Define an IoT Core Rule to send data to the Lambda function
+  IotRule:
+    Type: AWS::IoT::TopicRule
+    Properties:
+      RuleName: MachineStatusTrackingRule
+      TopicRulePayload:
+        Actions:
+          - Lambda:
+              FunctionArn: !GetAtt IotDataProcessorFunction.Arn
+        Sql: >-
+          SELECT * FROM 'iot/machine/status'
+
+Outputs:
+  S3BucketARN:
+    Description: The ARN of the S3 bucket used for storage.
+    Value: !GetAtt DataStorageBucket.Arn
+    Export:
+      Name: DataStorageBucketARN
+
+  LambdaFunctionArn:
+    Description: The ARN of the Lambda function.
+    Value: !GetAtt IotDataProcessorFunction.Arn
+    Export:
+      Name: IotDataProcessorFunctionArn
+
+  IotRuleArn:
+    Description: The ARN of the IoT Rule.
+    Value: !Ref IotRule
+    Export:
+      Name: IotRuleArn
