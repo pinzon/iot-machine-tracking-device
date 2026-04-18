@@ -1,0 +1,21 @@
+#include <Arduino.h>
+
+const int VIBRATION_PIN = D2;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(VIBRATION_PIN, INPUT);
+  Serial.println("SW-420 sensor test. Monitoring pin D2...");
+}
+
+void loop() {
+  int digital = digitalRead(VIBRATION_PIN);
+  int analog = analogRead(A0);
+
+  Serial.print("D2: ");
+  Serial.print(digital == HIGH ? "VIBRATING" : "STILL    ");
+  Serial.print("  |  A0: ");
+  Serial.println(analog);
+
+  delay(200);
+}

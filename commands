@@ -1,0 +1,8 @@
+ cd firmware
+  mv src/main.cpp src/main.cpp.bak                                                                              
+  pio run --target upload                                                                                     
+  pio device monitor
+
+    rm src/sensor_test.cpp
+  mv src/main.cpp.bak src/main.cpp                                                                              
+   

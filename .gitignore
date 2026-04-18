@@ -1,1 +1,4 @@
 *.zip
+firmware/.pio/
+firmware/certs/
+firmware/data/

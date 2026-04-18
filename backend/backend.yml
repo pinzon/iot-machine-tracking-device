@@ -1,9 +1,6 @@
 Description: >-
-  A complete, native AWS CloudFormation template to track machine status.
-  It includes:
-  - An S3 bucket for storing CSV logs.
-  - A Lambda function that processes incoming IoT data and writes it as a CSV file.
-  - IAM roles and policies for secure execution and invocation.
+  CloudFormation template for water pump tracking system.
+  Provisions S3 storage, Lambda processor, IAM roles, and IoT Core rule.
 
 Parameters:
   LambdaBucket:
@@ -25,6 +22,11 @@ Parameters:
     Type: String
     Description: Prefix for CSV files stored in the S3 bucket.
     Default: 'machine_durations/'
+
+  LambdaFunctionName:
+    Type: String
+    Description: Name of the Lambda function
+    Default: 'iot-data-processor'
 
 Resources:
 
@@ -60,21 +62,34 @@ Resources:
           - Effect: Allow
             Action:
               - s3:PutObject
+            Resource: !Sub 'arn:aws:s3:::${S3BucketName}/*'
+          - Effect: Allow
+            Action:
               - logs:CreateLogGroup
               - logs:CreateLogStream
               - logs:PutLogEvents
-            Resource: "*"
+            Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*'
+
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${LambdaFunctionName}'
+      RetentionInDays: 30
 
   # Define the Lambda function that processes IoT data and writes to S3
   IotDataProcessorFunction:
     Type: AWS::Lambda::Function
+    DependsOn: LambdaLogGroup
     Properties:
+      FunctionName: !Ref LambdaFunctionName
       Code:
         S3Bucket: !Ref LambdaBucket
         S3Key: !Ref LambdaKey  # Ensure this file is uploaded to your S3 bucket
       Handler: receiver.handler
       Role: !GetAtt LambdaExecutionRole.Arn
-      Runtime: python3.10
+      Runtime: python3.12
+      LoggingConfig:
+        LogGroup: !Ref LambdaLogGroup
       Environment:
         Variables:
           S3_BUCKET: !Ref S3BucketName
@@ -120,7 +135,7 @@ Resources:
               - logs:CreateLogGroup
               - logs:CreateLogStream
               - logs:PutLogEvents
-            Resource: "*"
+            Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*'
 
   # Define an IoT Core Rule to send data to the Lambda function
   IotRule:
