@@ -54,12 +54,17 @@ void connectWiFi() {
 void connectMQTT() {
   while (!mqttClient.connected()) {
     Serial.print("Connecting to MQTT...");
-    String clientId = String("pump-") + String(ESP.getChipId(), HEX);
-    if (mqttClient.connect(clientId.c_str())) {
+    if (mqttClient.connect(MACHINE_ID)) {
       Serial.println(" connected");
     } else {
       Serial.print(" failed, rc=");
-      Serial.println(mqttClient.state());
+      Serial.print(mqttClient.state());
+      char sslErr[128];
+      int sslCode = wifiClient.getLastSSLError(sslErr, sizeof(sslErr));
+      Serial.print(" sslCode=");
+      Serial.print(sslCode);
+      Serial.print(" sslErr=");
+      Serial.println(sslErr);
       delay(5000);
     }
   }
@@ -113,21 +118,38 @@ void setup() {
 
   wifiClient.setTrustAnchors(rootCert);
   wifiClient.setClientRSACert(clientCert, clientKey);
+  wifiClient.setBufferSizes(512, 512);
 
   connectWiFi();
 
-  // Sync time for TLS certificate validation
+  // Sync time for TLS certificate validation (wait until >= 2020-01-01)
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
   Serial.print("Syncing NTP");
   time_t now = time(nullptr);
-  while (now < 8 * 3600 * 2) {
+  while (now < 1577836800) {
     delay(500);
     Serial.print(".");
     now = time(nullptr);
   }
-  Serial.println(" done");
+  Serial.print(" done, epoch=");
+  Serial.println(now);
+
+  // Diagnostics
+  Serial.print("Free heap: ");
+  Serial.println(ESP.getFreeHeap());
+
+  IPAddress ip;
+  if (WiFi.hostByName(MQTT_HOST, ip)) {
+    Serial.print(MQTT_HOST);
+    Serial.print(" -> ");
+    Serial.println(ip);
+  } else {
+    Serial.println("DNS resolution failed");
+  }
 
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
+  mqttClient.setSocketTimeout(30);  // BearSSL handshake on ESP8266 can take 5-7s
+  mqttClient.setKeepAlive(60);
 
   Serial.println("Ready. Monitoring vibration sensor.");
 }

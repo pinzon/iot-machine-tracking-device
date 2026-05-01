@@ -1,141 +1,88 @@
 // NodeMCU ESP8266 ESP-12F (USB-C) Enclosure
-// Snap-fit box with USB-C port cutout and wire exit slot
+// Single box; board inserts vertically from top (USB-C up); cap closes top.
 
-/* [Board Dimensions] */
-// NodeMCU PCB (without headers)
-pcb_length = 49;    // mm
-pcb_width  = 26;    // mm
-pcb_thick  = 1.6;   // mm
-header_height = 8.5; // pin header height below PCB
-wire_bend_clearance = 5; // extra depth below headers for wires to bend
+/* [Internal Cavity] */
+inner_x = 26;   // width (matches PCB width)
+inner_y = 24;   // depth
+inner_z = 52;   // main height (PCB height); USB-C adds 2mm into cap
+
+/* [Board] */
+pcb_thick    = 1.5;
+component_h  = 3;    // tallest component above PCB face (reference)
 
 /* [USB-C Port] */
-usbc_width  = 9;
-usbc_height = 3.5;
-usbc_z_offset = 0;  // relative to PCB top surface
+usbc_w = 9;
+usbc_h = 3.5;
 
-/* [Wire Exit] */
-wire_slot_width = 12; // wide enough for 3 wires
-wire_slot_height = 5;
+/* [Case] */
+wall      = 2;
+cap_lip   = 4;     // cap lip insertion depth into box
+cap_clear = 0.3;   // cap-to-box lateral clearance
 
-/* [Case Parameters] */
-wall       = 2;       // wall thickness
-clearance  = 0.5;     // gap around PCB
-post_d     = 4;       // support post diameter
-post_hole  = 2;       // screw hole diameter (M2)
-lid_lip    = 1.5;     // lip height for snap fit
-snap_nub   = 0.4;     // snap nub size
-corner_r   = 2;       // corner rounding radius
+/* [Slide Rails] */
+rail_h      = 6;
+rail_w      = 2.5;
+rail_gap    = pcb_thick + 0.3;  // groove width (PCB + clearance)
+rail_offset = 3;                 // gap between back wall and first rail
+
+/* [Computed PCB position] */
+pcb_y = wall + rail_offset + rail_w + rail_gap / 2;  // PCB centerline Y
 
 /* [Computed] */
-// Interior dimensions
-inner_l = pcb_length + clearance * 2;
-inner_w = pcb_width + clearance * 2;
-inner_h = wire_bend_clearance + header_height + pcb_thick + 3; // bend clearance + headers + PCB + headroom
-
-// Outer dimensions
-outer_l = inner_l + wall * 2;
-outer_w = inner_w + wall * 2;
-outer_h = inner_h + wall; // bottom wall only, lid is separate
-
-// PCB rests on posts at header_height
-pcb_z = wall + wire_bend_clearance + header_height;
+outer_x = inner_x + wall * 2;
+outer_y = inner_y + wall * 2;
+outer_z = inner_z + wall;    // bottom wall only; top is open for cap
 
 /* [Rendering] */
-part = "both"; // [base, lid, both]
-explode = 10;  // explode distance for "both" view
+part    = "both";   // [box, cap, both]
+explode = 12;
 
-module rounded_box(l, w, h, r) {
-    hull() {
-        for (x = [r, l - r])
-            for (y = [r, w - r])
-                translate([x, y, 0])
-                    cylinder(r = r, h = h, $fn = 24);
-    }
-}
-
-module base() {
+module box() {
     difference() {
-        // Outer shell
-        rounded_box(outer_l, outer_w, outer_h, corner_r);
+        cube([outer_x, outer_y, outer_z]);
 
-        // Inner cavity
+        // Main cavity (open top)
         translate([wall, wall, wall])
-            rounded_box(inner_l, inner_w, inner_h + 1, max(corner_r - wall, 0.5));
-
-        // USB-C port cutout (on +X end)
-        translate([
-            outer_l - wall - 0.5,
-            outer_w / 2 - usbc_width / 2,
-            pcb_z + usbc_z_offset
-        ])
-            cube([wall + 1, usbc_width, usbc_height]);
-
-        // Wire exit slot (on -X end)
-        translate([
-            -0.5,
-            outer_w / 2 - wire_slot_width / 2,
-            pcb_z - 2
-        ])
-            cube([wall + 1, wire_slot_width, wire_slot_height]);
+            cube([inner_x, inner_y, inner_z + 1]);
     }
 
-    // PCB support posts (4 corners)
-    post_inset = 2; // mm from PCB edge
-    for (x = [wall + clearance + post_inset,
-              wall + clearance + pcb_length - post_inset])
-        for (y = [wall + clearance + post_inset,
-                  wall + clearance + pcb_width - post_inset])
-            translate([x, y, wall])
-                difference() {
-                    cylinder(d = post_d, h = wire_bend_clearance + header_height, $fn = 20);
-                    cylinder(d = post_hole, h = wire_bend_clearance + header_height + 0.1, $fn = 16);
-                }
-
-    // Lid snap nubs on inner walls (long sides)
-    for (y = [wall - snap_nub, outer_w - wall])
-        for (x = [outer_l * 0.25, outer_l * 0.75])
-            translate([x, y, outer_h - lid_lip / 2])
-                cube([4, snap_nub, lid_lip / 2]);
+    // Two parallel rails at bottom form the PCB slide groove
+    // Offset `rail_offset` from the back wall (Y=0 side)
+    y1 = wall + rail_offset;
+    y2 = y1 + rail_w + rail_gap;
+    for (y = [y1, y2])
+        translate([wall, y, wall])
+            cube([inner_x, rail_w, rail_h]);
 }
 
-module lid() {
-    lip_clearance = 0.3;
-
-    // Flat top
+module cap() {
     difference() {
-        rounded_box(outer_l, outer_w, wall, corner_r);
+        union() {
+            // Top plate
+            cube([outer_x, outer_y, wall]);
 
-        // Ventilation slots
-        for (x = [outer_l * 0.3, outer_l * 0.5, outer_l * 0.7])
-            translate([x - 4, outer_w * 0.3, -0.5])
-                cube([8, outer_w * 0.4, wall + 1]);
-    }
-
-    // Inner lip that fits inside base
-    translate([wall + lip_clearance, wall + lip_clearance, wall])
-        difference() {
-            rounded_box(
-                inner_l - lip_clearance * 2,
-                inner_w - lip_clearance * 2,
-                lid_lip,
-                max(corner_r - wall, 0.5)
-            );
-            translate([wall / 2, wall / 2, -0.1])
-                rounded_box(
-                    inner_l - lip_clearance * 2 - wall,
-                    inner_w - lip_clearance * 2 - wall,
-                    lid_lip + 0.2,
-                    max(corner_r - wall * 1.5, 0.3)
-                );
+            // Lip that slides into the box opening
+            translate([wall + cap_clear, wall + cap_clear, -cap_lip])
+                cube([
+                    inner_x - cap_clear * 2,
+                    inner_y - cap_clear * 2,
+                    cap_lip
+                ]);
         }
+
+        // USB-C cutout: through top plate AND lip (full cap depth)
+        translate([
+            outer_x / 2 - usbc_w / 2,
+            pcb_y - usbc_h / 2,
+            -cap_lip - 0.1
+        ])
+            cube([usbc_w, usbc_h, cap_lip + wall + 0.2]);
+    }
 }
 
-if (part == "base" || part == "both") {
-    base();
-}
+if (part == "box" || part == "both")
+    box();
 
-if (part == "lid" || part == "both") {
-    translate([0, 0, outer_h + explode])
-        lid();
-}
+if (part == "cap" || part == "both")
+    translate([0, 0, outer_z + explode])
+        cap();
